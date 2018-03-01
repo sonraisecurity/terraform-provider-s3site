@@ -17,6 +17,9 @@ import (
 	"strings"
 )
 
+// Part size for multipart uploads
+const partSize int64 = 1024 * 1024 * 5
+
 func resourceSite() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceSiteCreate,
@@ -132,7 +135,6 @@ func resourceSiteRead(data *schema.ResourceData, meta interface{}) error {
 
 	fileMap := make(map[string]string)
 	for _, bucketFile := range listObjectResponse.Contents {
-		log.Printf("[DEBUG] key=%s, etag=%s", *bucketFile.Key, *bucketFile.ETag)
 		fileMap[*bucketFile.Key] = cleanS3ETag(*bucketFile.ETag)
 	}
 
@@ -144,6 +146,7 @@ func resourceSiteRead(data *schema.ResourceData, meta interface{}) error {
 func resourceSiteUpdate(data *schema.ResourceData, meta interface{}) error {
 	bucket := data.Get("bucket").(string)
 
+	log.Printf("[INFO] Clearing bucket. bucket=%s", bucket)
 	err := deleteAllObjects(bucket, meta)
 	if err != nil {
 		return err
@@ -191,7 +194,7 @@ func deleteAllObjects(bucket string, meta interface{}) error {
 		keys = append(keys, *object.Key)
 	}
 
-	return bulkDeleteS3Objects(bucket, keys, meta)
+	return deleteObjects(bucket, keys, meta)
 }
 
 func bulkUploadS3Objects(files []fileInfo, bucket string, meta interface{}) error {
@@ -222,30 +225,44 @@ func bulkUploadS3Objects(files []fileInfo, bucket string, meta interface{}) erro
 	return nil
 }
 
-func bulkDeleteS3Objects(bucket string, keys []string, meta interface{}) error {
+func deleteObjects(bucket string, keys []string, meta interface{}) error {
 	sess := meta.(*session.Session)
+	svc := s3.New(sess)
 
-	batcher := s3manager.NewBatchDelete(sess)
+	// objectIdentifiers := []*s3.ObjectIdentifier{}
 
-	batchDeleteObjects := []s3manager.BatchDeleteObject{}
+	// for _, key := range keys {
+	// 	objectIdentifier := s3.ObjectIdentifier{
+	// 		Key: &key,
+	// 	}
+	// 	log.Printf("[DEBUG] Deleting key. bucket=%s, key=%s", bucket, key)
+	// 	objectIdentifiers = append(objectIdentifiers, &objectIdentifier)
+	// }
 
+	// delete := s3.Delete{
+	// 	Objects: objectIdentifiers,
+	// }
+
+	// _, err := svc.DeleteObjects(&s3.DeleteObjectsInput{
+	// 	Bucket: &bucket,
+	// 	Delete: &delete,
+	// })
+
+	// if err != nil {
+	// 	return err
+	// }
+
+	// DeleteObjects API doesn't seem to work right
 	for _, key := range keys {
-		batchDeleteObject := s3manager.BatchDeleteObject{
-			Object: &s3.DeleteObjectInput{
-				Key:    &key,
-				Bucket: &bucket,
-			},
+		log.Printf("[DEBUG] Deleting key. bucket=%s, key=%s", bucket, key)
+		_, err := svc.DeleteObject(&s3.DeleteObjectInput{
+			Bucket: &bucket,
+			Key:    &key,
+		})
+
+		if err != nil {
+			return err
 		}
-
-		batchDeleteObjects = append(batchDeleteObjects, batchDeleteObject)
-	}
-
-	err := batcher.Delete(aws.BackgroundContext(), &s3manager.DeleteObjectsIterator{
-		Objects: batchDeleteObjects,
-	})
-
-	if err != nil {
-		return err
 	}
 
 	return nil
@@ -253,13 +270,35 @@ func bulkDeleteS3Objects(bucket string, keys []string, meta interface{}) error {
 
 func getFileMd5(path string) (string, error) {
 	content, err := ioutil.ReadFile(path)
-
 	if err != nil {
 		return "", err
 	}
 
-	hash := md5.Sum(content)
-	return fmt.Sprintf("%x", hash), nil
+	size := int64(len(content))
+	contentToHash := content
+	parts := 0
+
+	if int64(size) > partSize {
+		var pos int64 = 0
+		contentToHash = make([]byte, 0)
+		for size > pos {
+			endpos := pos + partSize
+			if endpos >= size {
+				endpos = size
+			}
+			hash := md5.Sum(content[pos:endpos])
+			contentToHash = append(contentToHash, hash[:]...)
+			pos += partSize
+			parts += 1
+		}
+	}
+
+	hash := md5.Sum(contentToHash)
+	etag := fmt.Sprintf("%x", hash)
+	if parts > 0 {
+		etag += fmt.Sprintf("-%d", parts)
+	}
+	return etag, nil
 }
 
 func cleanS3ETag(eTag string) string {
