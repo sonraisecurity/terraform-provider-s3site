@@ -154,6 +154,9 @@ func Provider() terraform.ResourceProvider {
 		ResourcesMap: map[string]*schema.Resource{
 			"s3site_site": resourceSite(),
 		},
+		DataSourcesMap: map[string]*schema.Resource{
+			"s3site_artifactory": dataSourceArtifactory(),
+		},
 		ConfigureFunc: providerConfigure,
 	}
 }
