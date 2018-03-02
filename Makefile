@@ -16,6 +16,9 @@ default: build
 build:
 	go build -v .
 
+install:
+	go install
+
 packages:
 	@for os in $(PKG_OS); do \
 		for arch in $(PKG_ARCH); do \

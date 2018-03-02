@@ -4,6 +4,8 @@ language: go
 go:
 - 1.9
 
+scripts:
+
 before_deploy:
 - make packages
 
