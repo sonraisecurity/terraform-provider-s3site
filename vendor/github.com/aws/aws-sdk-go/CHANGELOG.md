@@ -1,3 +1,41 @@
+Release v1.13.8 (2018-03-01)
+===
+
+### Service Client Updates
+* `service/ec2`: Updates service API and documentation
+  * Added support for modifying Placement Group association of instances via ModifyInstancePlacement API.
+* `service/events`: Updates service API and documentation
+  * Added BatchParameters to the PutTargets API
+* `service/servicecatalog`: Updates service API and documentation
+  * This release of ServiceCatalog adds the DeleteTagOption API.
+* `service/ssm`: Updates service API and documentation
+  * This Inventory release supports the status message details reported by the last sync for the resource data sync API.
+* `service/storagegateway`: Updates service API and documentation
+  * AWS Storage Gateway (File) support for two new file share attributes are added.           1. Users can specify the S3 Canned ACL to use for new objects created in the file share.         2. Users can create file shares for requester-pays buckets.
+
+Release v1.13.7 (2018-02-28)
+===
+
+### Service Client Updates
+* `service/application-autoscaling`: Updates service API and documentation
+* `aws/endpoints`: Updated Regions and Endpoints metadata.
+
+Release v1.13.6 (2018-02-27)
+===
+
+### Service Client Updates
+* `service/ecr`: Updates service documentation
+  * Documentation updates for Amazon ECR.
+
+Release v1.13.5 (2018-02-26)
+===
+
+### Service Client Updates
+* `service/route53`: Updates service API
+  * Added support for creating LBR rules using ap-northeast-3 region.
+* `service/sts`: Updates service API and documentation
+  * Increased SAMLAssertion parameter size from 50000 to 100000 for AWS Security Token Service AssumeRoleWithSAML API to allow customers to pass bigger SAML assertions
+
 Release v1.13.4 (2018-02-23)
 ===
 

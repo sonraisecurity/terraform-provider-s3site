@@ -14,7 +14,7 @@ endif
 default: build
 
 build:
-	go build -o $(BUILD_PATH)/terraform-provider-s3site
+	go build -v .
 
 packages:
 	@for os in $(PKG_OS); do \
