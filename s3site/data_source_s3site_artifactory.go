@@ -70,6 +70,10 @@ func dataSourceArtifactoryRead(data *schema.ResourceData, meta interface{}) erro
 	}
 	defer response.Body.Close()
 
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("Error downloading artifact. HttpStatusCode=%d", response.StatusCode)
+	}
+
 	localArtifactPath := fmt.Sprintf("%s/%s", tempDir, artifact)
 	if file, err := os.Create(localArtifactPath); err != nil {
 		return err
