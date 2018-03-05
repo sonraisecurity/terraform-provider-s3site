@@ -14,7 +14,7 @@ endif
 default: build
 
 build:
-	go build -v .
+	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o $(BUILD_PATH)/$(PROVIDER) .
 
 install:
 	go install
@@ -29,6 +29,9 @@ packages:
 				tar -cvzf $(BUILD_PATH)/$(PROVIDER)_$(BRANCH)_$${os}_$${arch}.tar.gz $(PROVIDER)_$${os}_$${arch}/; \
 		done; \
 	done;
+
+deploy-local:
+	mv $(BUILD_PATH)/$(PROVIDER) ~/.terraform.d/plugins/
 
 clean:
 	@rm -rf $(BUILD_PATH)
