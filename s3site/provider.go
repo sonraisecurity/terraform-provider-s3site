@@ -152,7 +152,8 @@ func Provider() terraform.ResourceProvider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"s3site_site": resourceSite(),
+			"s3site_site":                    resourceSite(),
+			"s3site_cloudfront_invalidation": resourceCloudfrontInvalidation(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"s3site_artifactory": dataSourceArtifactory(),

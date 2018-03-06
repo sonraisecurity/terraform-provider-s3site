@@ -202,3 +202,11 @@ type fileInfo struct {
 	FileInfo     os.FileInfo
 	Hash         string
 }
+
+func encodeKey(key string) string {
+	return strings.Replace(key, ".", "%%", -1)
+}
+
+func decodeKey(key string) string {
+	return strings.Replace(key, "%%", ".", -1)
+}

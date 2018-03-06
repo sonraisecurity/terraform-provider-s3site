@@ -66,7 +66,8 @@ func customizeDiff(diff *schema.ResourceDiff, v interface{}) error {
 				return err
 			}
 
-			key := localFile.RelativePath
+			key := encodeKey(localFile.RelativePath)
+
 			log.Printf("[DEBUG] Read file. key=%s, value=%s", key, hash)
 			fileMap[key] = hash
 		}
@@ -96,10 +97,11 @@ func resourceSiteCreate(data *schema.ResourceData, meta interface{}) error {
 
 	fileMap := make(map[string]fileInfo)
 	for key, checksum := range keyChecksumMap {
+		decodedKey := decodeKey(key)
 		fileMap[key] = fileInfo{
-			RelativePath: key,
+			RelativePath: decodedKey,
 			Hash:         checksum.(string),
-			FullPath:     fmt.Sprintf("%s/site/%s", tempDir, key),
+			FullPath:     fmt.Sprintf("%s/site/%s", tempDir, decodedKey),
 		}
 	}
 
@@ -111,22 +113,23 @@ func resourceSiteCreate(data *schema.ResourceData, meta interface{}) error {
 }
 
 func resourceSiteRead(data *schema.ResourceData, meta interface{}) error {
-	// bucket := data.Get("bucket").(string)
+	bucket := data.Get("bucket").(string)
 
-	// log.Printf("[INFO] Reading bucket. bucket=%s", bucket)
-	// listObjectResponse, err := listS3Objects(bucket, meta)
-	// if err != nil {
-	// 	return err
-	// }
+	log.Printf("[INFO] Reading bucket. bucket=%s", bucket)
+	listObjectResponse, err := listS3Objects(bucket, meta)
+	if err != nil {
+		return err
+	}
 
-	// data.SetId(bucket)
+	data.SetId(bucket)
 
-	// fileMap := make(map[string]string)
-	// for _, bucketFile := range listObjectResponse.Contents {
-	// 	fileMap[cleanS3ETag(*bucketFile.ETag)] = *bucketFile.Key
-	// }
+	fileMap := make(map[string]string)
+	for _, bucketFile := range listObjectResponse.Contents {
+		key := encodeKey(*bucketFile.Key)
+		fileMap[key] = cleanS3ETag(*bucketFile.ETag)
+	}
 
-	// data.Set("files", fileMap)
+	data.Set("files", fileMap)
 
 	return nil
 }
