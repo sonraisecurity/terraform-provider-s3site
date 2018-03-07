@@ -1,7 +1,7 @@
 package s3site
 
 import (
-	"bufio"
+	"bytes"
 	"crypto/md5"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
@@ -11,6 +11,7 @@ import (
 	"github.com/mholt/archiver"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,17 +63,19 @@ func bulkUploadS3Objects(fileMap map[string]fileInfo, bucket string, meta interf
 	uploader := s3manager.NewUploader(sess)
 
 	for _, fileInfo := range fileMap {
-		file, openErr := os.Open(fileInfo.FullPath)
-		if openErr != nil {
-			return openErr
+		fileData, err := ioutil.ReadFile(fileInfo.FullPath)
+		if err != nil {
+			return err
 		}
 
-		reader := bufio.NewReader(file)
+		contentType := http.DetectContentType(fileData)
+		reader := bytes.NewReader(fileData)
 
 		uploadInput := &s3manager.UploadInput{
-			Bucket: &bucket,
-			Key:    &fileInfo.RelativePath,
-			Body:   reader,
+			Bucket:      &bucket,
+			Key:         &fileInfo.RelativePath,
+			Body:        reader,
+			ContentType: &contentType,
 		}
 
 		_, uploaderErr := uploader.Upload(uploadInput)
