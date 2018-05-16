@@ -31,9 +31,25 @@ func prepareTmp() error {
 	return nil
 }
 
-func listS3Objects(bucket string, meta interface{}) (*s3.ListObjectsV2Output, error) {
-	sess := meta.(*session.Session)
-	s3conn := s3.New(sess)
+type S3Helper struct {
+	session  *session.Session
+	uploader *s3manager.Uploader
+}
+
+func NewS3Helper(session *session.Session) *S3Helper {
+	s3Helper := S3Helper{
+		session: session,
+	}
+
+	uploader := s3manager.NewUploader(session)
+
+	s3Helper.uploader = uploader
+
+	return &s3Helper
+}
+
+func (s3Helper S3Helper) ListS3Objects(bucket string) (*s3.ListObjectsV2Output, error) {
+	s3conn := s3.New(s3Helper.session)
 
 	input := &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
@@ -42,8 +58,8 @@ func listS3Objects(bucket string, meta interface{}) (*s3.ListObjectsV2Output, er
 	return s3conn.ListObjectsV2(input)
 }
 
-func deleteAllObjects(bucket string, meta interface{}) error {
-	listObjectResponse, err := listS3Objects(bucket, meta)
+func (s3Helper S3Helper) DeleteAllObjects(bucket string) error {
+	listObjectResponse, err := s3Helper.ListS3Objects(bucket)
 
 	if err != nil {
 		return err
@@ -54,13 +70,10 @@ func deleteAllObjects(bucket string, meta interface{}) error {
 		keys = append(keys, *object.Key)
 	}
 
-	return deleteObjects(bucket, keys, meta)
+	return s3Helper.DeleteObjects(bucket, keys)
 }
 
-func bulkUploadS3Objects(fileMap map[string]fileInfo, bucket string, meta interface{}) error {
-	sess := meta.(*session.Session)
-
-	uploader := s3manager.NewUploader(sess)
+func (s3Helper S3Helper) BulkUploadS3Objects(fileMap map[string]fileInfo, bucket string) error {
 
 	for _, fileInfo := range fileMap {
 		fileData, err := ioutil.ReadFile(fileInfo.FullPath)
@@ -78,7 +91,7 @@ func bulkUploadS3Objects(fileMap map[string]fileInfo, bucket string, meta interf
 			ContentType: &contentType,
 		}
 
-		_, uploaderErr := uploader.Upload(uploadInput)
+		_, uploaderErr := s3Helper.uploader.Upload(uploadInput)
 		if uploaderErr != nil {
 			return uploaderErr
 		}
@@ -87,34 +100,33 @@ func bulkUploadS3Objects(fileMap map[string]fileInfo, bucket string, meta interf
 	return nil
 }
 
-func deleteObjects(bucket string, keys []string, meta interface{}) error {
-	sess := meta.(*session.Session)
-	svc := s3.New(sess)
+func (s3Helper S3Helper) PutFile(fi fileInfo, bucket string) error {
+	fileData, err := ioutil.ReadFile(fi.FullPath)
+	if err != nil {
+		return err
+	}
 
-	// objectIdentifiers := []*s3.ObjectIdentifier{}
+	contentType := http.DetectContentType(fileData)
+	reader := bytes.NewReader(fileData)
 
-	// for _, key := range keys {
-	// 	objectIdentifier := s3.ObjectIdentifier{
-	// 		Key: &key,
-	// 	}
-	// 	log.Printf("[DEBUG] Deleting key. bucket=%s, key=%s", bucket, key)
-	// 	objectIdentifiers = append(objectIdentifiers, &objectIdentifier)
-	// }
+	uploadInput := &s3manager.UploadInput{
+		Bucket:      &bucket,
+		Key:         &fi.RelativePath,
+		Body:        reader,
+		ContentType: &contentType,
+	}
 
-	// delete := s3.Delete{
-	// 	Objects: objectIdentifiers,
-	// }
+	_, uploaderErr := s3Helper.uploader.Upload(uploadInput)
+	if uploaderErr != nil {
+		return uploaderErr
+	}
 
-	// _, err := svc.DeleteObjects(&s3.DeleteObjectsInput{
-	// 	Bucket: &bucket,
-	// 	Delete: &delete,
-	// })
+	return nil
+}
 
-	// if err != nil {
-	// 	return err
-	// }
+func (s3Helper S3Helper) DeleteObjects(bucket string, keys []string) error {
+	svc := s3.New(s3Helper.session)
 
-	// DeleteObjects API doesn't seem to work right
 	for _, key := range keys {
 		log.Printf("[DEBUG] Deleting key. bucket=%s, key=%s", bucket, key)
 		_, err := svc.DeleteObject(&s3.DeleteObjectInput{
@@ -128,39 +140,6 @@ func deleteObjects(bucket string, keys []string, meta interface{}) error {
 	}
 
 	return nil
-}
-
-func getFileMd5(path string) (string, error) {
-	content, err := ioutil.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-
-	size := int64(len(content))
-	contentToHash := content
-	parts := 0
-
-	if int64(size) > partSize {
-		var pos int64 = 0
-		contentToHash = make([]byte, 0)
-		for size > pos {
-			endpos := pos + partSize
-			if endpos >= size {
-				endpos = size
-			}
-			hash := md5.Sum(content[pos:endpos])
-			contentToHash = append(contentToHash, hash[:]...)
-			pos += partSize
-			parts += 1
-		}
-	}
-
-	hash := md5.Sum(contentToHash)
-	etag := fmt.Sprintf("%x", hash)
-	if parts > 0 {
-		etag += fmt.Sprintf("-%d", parts)
-	}
-	return etag, nil
 }
 
 func cleanS3ETag(eTag string) string {
@@ -204,6 +183,39 @@ type fileInfo struct {
 	RelativePath string
 	FileInfo     os.FileInfo
 	Hash         string
+}
+
+func (f fileInfo) getMd5Checksum() (string, error) {
+	content, err := ioutil.ReadFile(f.FullPath)
+	if err != nil {
+		return "", err
+	}
+
+	size := int64(len(content))
+	contentToHash := content
+	parts := 0
+
+	if int64(size) > partSize {
+		var pos int64 = 0
+		contentToHash = make([]byte, 0)
+		for size > pos {
+			endpos := pos + partSize
+			if endpos >= size {
+				endpos = size
+			}
+			hash := md5.Sum(content[pos:endpos])
+			contentToHash = append(contentToHash, hash[:]...)
+			pos += partSize
+			parts += 1
+		}
+	}
+
+	hash := md5.Sum(contentToHash)
+	etag := fmt.Sprintf("%x", hash)
+	if parts > 0 {
+		etag += fmt.Sprintf("-%d", parts)
+	}
+	return etag, nil
 }
 
 func encodeKey(key string) string {

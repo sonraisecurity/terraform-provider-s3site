@@ -2,7 +2,6 @@ package s3site
 
 import (
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
 	"github.com/hashicorp/terraform/helper/schema"
 	"log"
@@ -37,8 +36,8 @@ func resourceCloudfrontInvalidationCreate(data *schema.ResourceData, meta interf
 	distributionId := data.Get("cloudfront_distribution_id").(string)
 	files := data.Get("files").(map[string]interface{})
 
-	sess := meta.(*session.Session)
-	svc := cloudfront.New(sess)
+	m := meta.(*Meta)
+	svc := cloudfront.New(m.Session)
 
 	timestamp := time.Now().String()
 	quantity := int64(len(files))

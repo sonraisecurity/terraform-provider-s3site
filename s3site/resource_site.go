@@ -2,8 +2,11 @@ package s3site
 
 import (
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/hashicorp/terraform/helper/schema"
 	"log"
+	"strings"
 )
 
 // Part size for multipart uploads
@@ -33,19 +36,10 @@ func resourceSite() *schema.Resource {
 			"files": {
 				Type:     schema.TypeMap,
 				Computed: true,
-
-				// Elem: &schema.Resource{
-				// 	Schema: map[string]*schema.Schema{
-				// 		"key": {
-				// 			Type:     schema.TypeString,
-				// 			Required: true,
-				// 		},
-				// 		"hash": {
-				// 			Type:     schema.TypeString,
-				// 			Required: true,
-				// 		},
-				// 	},
-				// },
+			},
+			"exclude": {
+				Type:     schema.TypeString,
+				Optional: true,
 			},
 		},
 	}
@@ -53,14 +47,15 @@ func resourceSite() *schema.Resource {
 
 func customizeDiff(diff *schema.ResourceDiff, v interface{}) error {
 	path := diff.Get("path").(string)
+	exclude := diff.Get("exclude").(string)
 
-	fileMap := make(map[string]string)
+	fileMap := make(map[string]interface{})
 
 	if localFiles, err := extractArchive(path); err != nil {
 		return err
 	} else {
 		for _, localFile := range localFiles {
-			hash, err := getFileMd5(localFile.FullPath)
+			hash, err := localFile.getMd5Checksum()
 
 			if err != nil {
 				return err
@@ -72,6 +67,8 @@ func customizeDiff(diff *schema.ResourceDiff, v interface{}) error {
 			fileMap[key] = hash
 		}
 	}
+
+	fileMap = filterMap(fileMap, exclude)
 
 	diff.SetNew("files", fileMap)
 
@@ -90,22 +87,18 @@ func importState(data *schema.ResourceData, meta interface{}) ([]*schema.Resourc
 }
 
 func resourceSiteCreate(data *schema.ResourceData, meta interface{}) error {
+	m := meta.(*Meta)
 	bucket := data.Get("bucket").(string)
+	exclude := data.Get("exclude").(string)
 	keyChecksumMap := data.Get("files").(map[string]interface{})
 
 	data.SetId(bucket)
 
-	fileMap := make(map[string]fileInfo)
-	for key, checksum := range keyChecksumMap {
-		decodedKey := decodeKey(key)
-		fileMap[key] = fileInfo{
-			RelativePath: decodedKey,
-			Hash:         checksum.(string),
-			FullPath:     fmt.Sprintf("%s/site/%s", tempDir, decodedKey),
-		}
-	}
+	fileMap := filterMap(keyChecksumMap, exclude)
 
-	if bulkUploadErr := bulkUploadS3Objects(fileMap, bucket, meta); bulkUploadErr != nil {
+	fileInfoMap := convertMap(fileMap)
+
+	if bulkUploadErr := m.S3Helper.BulkUploadS3Objects(fileInfoMap, bucket); bulkUploadErr != nil {
 		return bulkUploadErr
 	}
 
@@ -113,36 +106,93 @@ func resourceSiteCreate(data *schema.ResourceData, meta interface{}) error {
 }
 
 func resourceSiteRead(data *schema.ResourceData, meta interface{}) error {
+	m := meta.(*Meta)
 	bucket := data.Get("bucket").(string)
+	exclude := data.Get("exclude").(string)
 
 	log.Printf("[INFO] Reading bucket. bucket=%s", bucket)
-	listObjectResponse, err := listS3Objects(bucket, meta)
+	listObjectResponse, err := m.S3Helper.ListS3Objects(bucket)
 	if err != nil {
-		return err
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case s3.ErrCodeNoSuchBucket:
+				log.Printf("[DEBUG] %s. bucket=%s", s3.ErrCodeNoSuchBucket, bucket)
+
+				data.SetId("")
+				return nil
+			default:
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 
 	data.SetId(bucket)
 
-	fileMap := make(map[string]string)
+	fileMap := make(map[string]interface{})
 	for _, bucketFile := range listObjectResponse.Contents {
 		key := encodeKey(*bucketFile.Key)
 		fileMap[key] = cleanS3ETag(*bucketFile.ETag)
 	}
+
+	fileMap = filterMap(fileMap, exclude)
 
 	data.Set("files", fileMap)
 
 	return nil
 }
 
+func convertMap(fileMap map[string]interface{}) map[string]fileInfo {
+	fileInfoMap := make(map[string]fileInfo)
+	for key, checksum := range fileMap {
+		fileInfoMap[key] = convertKeyPair(key, checksum)
+	}
+
+	return fileInfoMap
+}
+
+func convertKeyPair(key string, value interface{}) fileInfo {
+	decodedKey := decodeKey(key)
+	return fileInfo{
+		RelativePath: decodedKey,
+		Hash:         value.(string),
+		FullPath:     fmt.Sprintf("%s/site/%s", tempDir, decodedKey),
+	}
+}
+
 func resourceSiteUpdate(data *schema.ResourceData, meta interface{}) error {
+	m := meta.(*Meta)
 	bucket := data.Get("bucket").(string)
 
-	log.Printf("[INFO] Clearing bucket. bucket=%s", bucket)
-	if err := deleteAllObjects(bucket, meta); err != nil {
+	oldFiles, newFiles := data.GetChange("files")
+
+	oldFileMap := oldFiles.(map[string]interface{})
+	newFileMap := newFiles.(map[string]interface{})
+
+	filesToPutMap := make(map[string]interface{})
+	var filesToDelete []string
+
+	// Need to put these files regardless if they are new or updated
+	for key, value := range newFileMap {
+		filesToPutMap[key] = value
+	}
+
+	// If the file doesn't exists anymore it needs to be deleted
+	for key, value := range oldFileMap {
+		if _, ok := newFileMap[key]; !ok {
+			f := convertKeyPair(key, value)
+			filesToDelete = append(filesToDelete, f.RelativePath)
+		}
+	}
+
+	filesToPutFileMap := convertMap(filesToPutMap)
+
+	if err := m.S3Helper.BulkUploadS3Objects(filesToPutFileMap, bucket); err != nil {
 		return err
 	}
 
-	if err := resourceSiteCreate(data, meta); err != nil {
+	if err := m.S3Helper.DeleteObjects(bucket, filesToDelete); err != nil {
 		return err
 	}
 
@@ -150,12 +200,30 @@ func resourceSiteUpdate(data *schema.ResourceData, meta interface{}) error {
 }
 
 func resourceSiteDelete(data *schema.ResourceData, meta interface{}) error {
+	m := meta.(*Meta)
 	bucket := data.Get("bucket").(string)
 
-	err := deleteAllObjects(bucket, meta)
+	err := m.S3Helper.DeleteAllObjects(bucket)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func filterMap(fileMap map[string]interface{}, exclude string) map[string]interface{} {
+	if exclude == "" {
+		return fileMap
+	}
+
+	filteredFileMap := make(map[string]interface{})
+	for key, value := range fileMap {
+		if strings.Contains(key, exclude) {
+			log.Printf("[DEBUG] Filtering out file. key=%s", key)
+			continue
+		}
+		filteredFileMap[key] = value
+	}
+
+	return filteredFileMap
 }

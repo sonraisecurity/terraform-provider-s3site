@@ -3,12 +3,18 @@ package s3site
 import (
 	"bytes"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/hashicorp/terraform/helper/hashcode"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
 	homedir "github.com/mitchellh/go-homedir"
 	"log"
 )
+
+type Meta struct {
+	Session  *session.Session
+	S3Helper *S3Helper
+}
 
 func Provider() terraform.ResourceProvider {
 	return &schema.Provider{
@@ -338,7 +344,16 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 		config.ForbiddenAccountIds = v.(*schema.Set).List()
 	}
 
-	return config.Client()
+	client, err := config.Client()
+	sess := client.(*session.Session)
+
+	if err != nil {
+		panic(err)
+	}
+	return &Meta{
+		Session:  sess,
+		S3Helper: NewS3Helper(sess),
+	}, nil
 }
 
 func assumeRoleSchema() *schema.Schema {
