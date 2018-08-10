@@ -4,17 +4,17 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/mholt/archiver"
-	"io/ioutil"
-	"log"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 )
 
 var tempDir string = "/tmp/s3site"
@@ -81,14 +81,17 @@ func (s3Helper S3Helper) BulkUploadS3Objects(fileMap map[string]fileInfo, bucket
 			return err
 		}
 
-		contentType := http.DetectContentType(fileData)
 		reader := bytes.NewReader(fileData)
 
 		uploadInput := &s3manager.UploadInput{
 			Bucket:      &bucket,
 			Key:         &fileInfo.RelativePath,
 			Body:        reader,
-			ContentType: &contentType,
+			ContentType: &fileInfo.ContentType,
+		}
+
+		if fileInfo.ContentEncoding != "" {
+			uploadInput.ContentEncoding = &fileInfo.ContentEncoding
 		}
 
 		_, uploaderErr := s3Helper.uploader.Upload(uploadInput)
@@ -106,14 +109,17 @@ func (s3Helper S3Helper) PutFile(fi fileInfo, bucket string) error {
 		return err
 	}
 
-	contentType := http.DetectContentType(fileData)
 	reader := bytes.NewReader(fileData)
 
 	uploadInput := &s3manager.UploadInput{
 		Bucket:      &bucket,
 		Key:         &fi.RelativePath,
 		Body:        reader,
-		ContentType: &contentType,
+		ContentType: &fi.ContentType,
+	}
+
+	if fi.ContentEncoding != "" {
+		uploadInput.ContentEncoding = &fi.ContentEncoding
 	}
 
 	_, uploaderErr := s3Helper.uploader.Upload(uploadInput)
@@ -179,10 +185,12 @@ func extractArchive(archive string) ([]fileInfo, error) {
 }
 
 type fileInfo struct {
-	FullPath     string
-	RelativePath string
-	FileInfo     os.FileInfo
-	Hash         string
+	FullPath        string
+	RelativePath    string
+	FileInfo        os.FileInfo
+	ContentType     string
+	ContentEncoding string
+	Hash            string
 }
 
 func (f fileInfo) getMd5Checksum() (string, error) {

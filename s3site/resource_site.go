@@ -2,11 +2,15 @@ package s3site
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"path/filepath"
+	"strings"
+
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/hashicorp/terraform/helper/schema"
-	"log"
-	"strings"
 )
 
 // Part size for multipart uploads
@@ -98,7 +102,9 @@ func resourceSiteCreate(data *schema.ResourceData, meta interface{}) error {
 
 	fileInfoMap := convertMap(fileMap)
 
-	if bulkUploadErr := m.S3Helper.BulkUploadS3Objects(fileInfoMap, bucket); bulkUploadErr != nil {
+	fileInfoMapD := decorateMap(fileInfoMap)
+
+	if bulkUploadErr := m.S3Helper.BulkUploadS3Objects(fileInfoMapD, bucket); bulkUploadErr != nil {
 		return bulkUploadErr
 	}
 
@@ -188,7 +194,9 @@ func resourceSiteUpdate(data *schema.ResourceData, meta interface{}) error {
 
 	filesToPutFileMap := convertMap(filesToPutMap)
 
-	if err := m.S3Helper.BulkUploadS3Objects(filesToPutFileMap, bucket); err != nil {
+	filesToPutFileMapD := decorateMap(filesToPutFileMap)
+
+	if err := m.S3Helper.BulkUploadS3Objects(filesToPutFileMapD, bucket); err != nil {
 		return err
 	}
 
@@ -226,4 +234,21 @@ func filterMap(fileMap map[string]interface{}, exclude string) map[string]interf
 	}
 
 	return filteredFileMap
+}
+
+func decorateMap(fileInfoMap map[string]fileInfo) map[string]fileInfo {
+	fileInfoMapD := make(map[string]fileInfo)
+	for key, fi := range fileInfoMap {
+		fileData, _ := ioutil.ReadFile(fi.FullPath)
+
+		fi.ContentType = http.DetectContentType(fileData)
+
+		if strings.Contains(fi.ContentType, "gzip") && strings.Contains(filepath.Ext(fi.FullPath), ".js") {
+			fi.ContentEncoding = "gzip"
+			fi.ContentType = "application/javascript"
+		}
+		fileInfoMapD[key] = fi
+	}
+
+	return fileInfoMapD
 }
