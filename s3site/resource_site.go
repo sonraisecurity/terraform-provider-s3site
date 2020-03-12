@@ -243,6 +243,11 @@ func decorateMap(fileInfoMap map[string]fileInfo) map[string]fileInfo {
 
 		fi.ContentType = http.DetectContentType(fileData)
 
+		if strings.HasSuffix(fi.FullPath, "index.html") {
+			fi.CacheControl = "no-cache, no-store, must-revalidate"
+			fi.Expires = "0"
+		}
+
 		if strings.Contains(fi.ContentType, "gzip") && strings.Contains(filepath.Ext(fi.FullPath), ".js") {
 			fi.ContentEncoding = "gzip"
 			fi.ContentType = "application/javascript"
