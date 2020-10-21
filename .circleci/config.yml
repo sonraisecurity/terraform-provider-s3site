@@ -1,0 +1,44 @@
+workspace_root: &workspace_root
+                  ~/s3site
+
+version: 2.1
+jobs:
+  build:
+    docker:
+      - image: circleci/golang:1.13
+    working_directory: *workspace_root
+    steps:
+      - checkout
+      - attach_workspace: *workspace_root
+      - run:
+          name: build provider
+          command: make packages
+
+  publish-github-release:
+    docker:
+      - image: cibuilds/github:0.10
+      steps:
+        - attach_workspace: *workspace_root
+        - run:
+            name: "Publish Release on GitHub"
+            command: |
+              ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -delete ${CIRCLE_TAG} *workspace_root/build/
+
+workflows:
+  version: 2
+  main:
+    jobs:
+      - build:
+          filters:
+            branches:
+              only:
+                - master
+      - publish-github-release:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^\d+\.\d+\.\d+$/
+

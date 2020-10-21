@@ -1,3 +1,5 @@
 .terraform/*
 .vscode/*
 build/*
+.DS_Store
+.idea/
