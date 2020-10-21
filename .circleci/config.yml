@@ -55,6 +55,7 @@ workflows:
             tags:
               only: /^v\d+\.\d+\.\d+$/
       - release:
+          context: sonrai-context
           requires:
             - build
           filters:
