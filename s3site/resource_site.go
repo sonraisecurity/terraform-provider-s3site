@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"mime"
 	"net/http"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -241,7 +243,14 @@ func decorateMap(fileInfoMap map[string]fileInfo) map[string]fileInfo {
 	for key, fi := range fileInfoMap {
 		fileData, _ := ioutil.ReadFile(fi.FullPath)
 
-		fi.ContentType = http.DetectContentType(fileData)
+		// DetectContentType implements https://mimesniff.spec.whatwg.org/ which doesn't support SVG
+		// Use mime.TypeByExtension first then fallback to DetectContentType
+		// See https://github.com/golang/go/issues/15888
+		fi.ContentType = mime.TypeByExtension(path.Ext(fi.FullPath))
+
+		if fi.ContentType == "" {
+			fi.ContentType = http.DetectContentType(fileData)
+		}
 
 		if strings.Contains(fi.ContentType, "gzip") && strings.Contains(filepath.Ext(fi.FullPath), ".js") {
 			fi.ContentEncoding = "gzip"
