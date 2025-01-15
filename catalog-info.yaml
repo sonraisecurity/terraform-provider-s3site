@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: terraform-provider-s3site
+  annotations:
+    github.com/project-slug: sonraisecurity/terraform-provider-s3site
+    circleci.com/project-slug: github/sonraisecurity/terraform-provider-s3site
+    snyk.io/org-id: a06f2078-d569-477b-8ad9-7b4f90fab93a
+  tags:
+  - go
+spec:
+  type: library
+  lifecycle: production
+  owner: cloudops
