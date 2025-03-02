@@ -8,7 +8,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -92,6 +94,19 @@ func (s3Helper S3Helper) BulkUploadS3Objects(fileMap map[string]fileInfo, bucket
 
 		if fileInfo.ContentEncoding != "" {
 			uploadInput.ContentEncoding = &fileInfo.ContentEncoding
+		}
+
+		if fileInfo.CacheControl != "" {
+			uploadInput.CacheControl = &fileInfo.CacheControl
+		}
+
+		if fileInfo.Expires != "" {
+			secs, err2 := strconv.ParseInt(fileInfo.Expires, 10, 64)
+			if err2 != nil {
+				log.Fatal("invalid value for Expires " + fileInfo.Expires)
+			}
+			t := time.Unix(time.Now().Unix(), secs)
+			uploadInput.Expires = &t
 		}
 
 		_, uploaderErr := s3Helper.uploader.Upload(uploadInput)
@@ -191,6 +206,8 @@ type fileInfo struct {
 	ContentType     string
 	ContentEncoding string
 	Hash            string
+	CacheControl    string
+	Expires         string
 }
 
 func (f fileInfo) getMd5Checksum() (string, error) {
