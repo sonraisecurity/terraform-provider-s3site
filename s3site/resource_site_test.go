@@ -82,10 +82,10 @@ func TestDecorateMap(t *testing.T) {
 	}
 
 	if r4.ContentType != "application/javascript" {
-		t.Error("Invalid ContentType on main.js")
+		t.Error("Invalid ContentType on index_compressed.js")
 	}
 
 	if r4.ContentEncoding != "gzip" {
-		t.Error("Invalid ContentEncoding on main.js")
+		t.Error("Invalid ContentEncoding on index_compressed.js")
 	}
 }
