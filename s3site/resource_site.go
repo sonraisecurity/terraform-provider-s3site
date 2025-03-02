@@ -250,7 +250,7 @@ func decorateMap(fileInfoMap map[string]fileInfo) map[string]fileInfo {
 
 		// There's a situation where JS extension files have been gzipped
 		// We need to handle those by sniffing the file
-		if fi.ContentType == "" || strings.Contains(fi.ContentType, "text/javascript") {
+		if fi.ContentType == "" || strings.Contains(fi.ContentType, "javascript") {
 			fi.ContentType = http.DetectContentType(fileData)
 		}
 				
