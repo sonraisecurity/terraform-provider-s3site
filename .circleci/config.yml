@@ -2,7 +2,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: golang:1.14.15
+      - image: golang:1.24
     working_directory: /terraform-provider-s3site
     steps:
       - checkout
@@ -13,7 +13,7 @@ jobs:
       - run:
           name: Build
           command: |
-            CGO_ENABLED=0 GOOS=darwin GOARCH=386 go build -mod=readonly -ldflags="-s -w" -a -o build/terraform-provider-s3site-darwin-386
+            # CGO_ENABLED=0 GOOS=darwin GOARCH=386 go build -mod=readonly -ldflags="-s -w" -a -o build/terraform-provider-s3site-darwin-386
             CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -mod=readonly -ldflags="-s -w" -a -o build/terraform-provider-s3site-darwin-amd64
             # CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -mod=readonly -ldflags="-s -w" -a -o build/terraform-provider-s3site-linux-386
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -ldflags="-s -w" -a -o build/terraform-provider-s3site-linux-amd64
@@ -33,14 +33,14 @@ jobs:
   release:
     working_directory: /build
     docker:
-      - image: golang:1.14.15
+      - image: golang:1.24
     steps:
       - attach_workspace:
           at: /
       - run:
-          name: Instal GHR
+          name: Install GHR
           command: |
-            go get github.com/tcnksm/ghr
+            go install github.com/tcnksm/ghr@latest
       - run:
           name: Publish release
           command: |
