@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -48,6 +49,34 @@ func NewS3Helper(session *session.Session) *S3Helper {
 	s3Helper.uploader = uploader
 
 	return &s3Helper
+}
+
+func (s3Helper S3Helper) GetObject(bucket string, key string, localPath string) error {
+	s3conn := s3.New(s3Helper.session)
+
+	input := &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}
+
+	result, err := s3conn.GetObject(input)
+	if err != nil {
+		return fmt.Errorf("error downloading s3://%s/%s: %s", bucket, key, err)
+	}
+	defer result.Body.Close()
+
+	file, err := os.Create(localPath)
+	if err != nil {
+		return fmt.Errorf("error creating local file %s: %s", localPath, err)
+	}
+	defer file.Close()
+
+	if _, err := io.Copy(file, result.Body); err != nil {
+		return fmt.Errorf("error writing to %s: %s", localPath, err)
+	}
+
+	log.Printf("[DEBUG] Downloaded s3://%s/%s to %s", bucket, key, localPath)
+	return nil
 }
 
 func (s3Helper S3Helper) ListS3Objects(bucket string) (*s3.ListObjectsV2Output, error) {
